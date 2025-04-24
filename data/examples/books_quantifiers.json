@@ -1,0 +1,100 @@
+[
+  [
+    {
+      "sentence": "Every day, Bailey Beaver eats ice cream for breakfast, candy for lunch and cake for dinner.",
+      "sentence_num": 0,
+      "story_id": 0,
+      "book_title": "A Lesson For Bailey",
+      "publish_year": 2012.0,
+      "age_range": "3-7",
+      "age_min": 3.0,
+      "age_max": 7.0,
+      "word_count": 331,
+      "readability_score": 1.8182796050480583,
+      "grade_level": 2.0,
+      "tags": [
+        {
+          "entity": "Non-Living Kind",
+          "score": 0.9749864339828491,
+          "index": 2,
+          "word": "day",
+          "start": 6,
+          "end": 9
+        },
+        {
+          "entity": "Biological Kind",
+          "score": 0.9390778541564941,
+          "index": 4,
+          "word": "bailey beaver",
+          "start": 11,
+          "end": 24
+        },
+        {
+          "entity": "Behavioral",
+          "score": 0.9895424842834473,
+          "index": 6,
+          "word": "eats",
+          "start": 25,
+          "end": 29
+        },
+        {
+          "entity": "Artifacts",
+          "score": 0.6457382440567017,
+          "index": 7,
+          "word": "ice cream",
+          "start": 30,
+          "end": 39
+        },
+        {
+          "entity": "Artifacts",
+          "score": 0.6778071522712708,
+          "index": 10,
+          "word": "breakfast",
+          "start": 44,
+          "end": 53
+        },
+        {
+          "entity": "Artifacts",
+          "score": 0.7634249329566956,
+          "index": 12,
+          "word": "candy",
+          "start": 55,
+          "end": 60
+        },
+        {
+          "entity": "Artifacts",
+          "score": 0.6542389392852783,
+          "index": 14,
+          "word": "lunch",
+          "start": 65,
+          "end": 70
+        },
+        {
+          "entity": "Artifacts",
+          "score": 0.9082938432693481,
+          "index": 16,
+          "word": "cake",
+          "start": 75,
+          "end": 79
+        },
+        {
+          "entity": "Artifacts",
+          "score": 0.7336865663528442,
+          "index": 18,
+          "word": "dinner",
+          "start": 84,
+          "end": 90
+        }
+      ],
+      "category": 4,
+      "subjects": [
+        {
+          "subject": "Bailey",
+          "words_pointing_to_subject": ["eats"],
+          "words_subject_points_to": ["Beaver"]
+        }
+      ],
+      "quantified_classification": "Neither"
+    }
+  ]
+]

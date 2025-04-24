@@ -1,0 +1,11 @@
+"0","parsed_books <- read_csv(here(DATA_LOC, ""parsed_books.csv"")) |> "
+"0","  mutate("
+"0","    sentence_type = case_when("
+"0","      category == 3 ~ ""generic"","
+"0","      category == 4 ~ ""habitual"","
+"0","      quantified_classification == ""Universal Quantifier"" ~ ""universal_quantification"","
+"0","      .default = ""other"""
+"0","    ) |> factor(levels = c(""other"", ""generic"", ""habitual"", ""universal_quantification"")),"
+"0","    is_pronoun = tolower(subject) %in% pronouns)"
+"2","Error: '/Users/sunnyyu/Desktop/Children_Speech_Books_NLP/code/R/analysis/data/parsed_books.csv' does not exist.
+"

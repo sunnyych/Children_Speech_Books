@@ -1,0 +1,7 @@
+"0","# Compute the mean of response for each tag_entity_new"
+"0","response_means <- processed_books %>%"
+"0","  group_by(tag_entity_new) %>%"
+"0","  summarize(mean_response = mean(response, na.rm = TRUE))"
+"0",""
+"0","# Display the result"
+"0","print(response_means)"

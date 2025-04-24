@@ -1,0 +1,136 @@
+[
+    {
+        "sentence": "she just turned two a month ago",
+        "id": 317365,
+        "subjects": [
+            {
+                "subject": "she",
+                "words_pointing_to_subject": [
+                    "turned"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "I often echo things back to her and interpret her stuff a lot",
+        "id": 317379,
+        "subjects": [
+            {
+                "subject": "I",
+                "words_pointing_to_subject": [
+                    "echo"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "yeah she's telling you she has an old tape player and a new tape player",
+        "id": 317384,
+        "subjects": [
+            {
+                "subject": "she",
+                "words_pointing_to_subject": [
+                    "telling"
+                ]
+            },
+            {
+                "subject": "she",
+                "words_pointing_to_subject": [
+                    "has",
+                    "telling"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "it doesn't look like mine but it writes",
+        "id": 317392,
+        "subjects": [
+            {
+                "subject": "it",
+                "words_pointing_to_subject": [
+                    "look"
+                ]
+            },
+            {
+                "subject": "it",
+                "words_pointing_to_subject": [
+                    "writes",
+                    "look"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "there's some toys in that bag",
+        "id": 317396,
+        "subjects": [
+            {
+                "subject": "toys",
+                "words_pointing_to_subject": [
+                    "'s"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "Investigator would let you look in the bag",
+        "id": 317397,
+        "subjects": [
+            {
+                "subject": "Investigator",
+                "words_pointing_to_subject": [
+                    "let"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "can you put that on your hand",
+        "id": 317412,
+        "subjects": [
+            {
+                "subject": "you",
+                "words_pointing_to_subject": [
+                    "put"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "can you give me a hug",
+        "id": 317425,
+        "subjects": [
+            {
+                "subject": "you",
+                "words_pointing_to_subject": [
+                    "give"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "you can listen to things on it like a radio",
+        "id": 317436,
+        "subjects": [
+            {
+                "subject": "you",
+                "words_pointing_to_subject": [
+                    "listen"
+                ]
+            }
+        ]
+    },
+    {
+        "sentence": "they go up in the air",
+        "id": 317442,
+        "subjects": [
+            {
+                "subject": "they",
+                "words_pointing_to_subject": [
+                    "go"
+                ]
+            }
+        ]
+    }
+]

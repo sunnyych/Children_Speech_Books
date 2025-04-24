@@ -1,0 +1,620 @@
+---
+title: "Generalizations in children's books and child-directed speech"
+format: html
+---
+# Setup
+```{r}
+library(here)
+library(nnet)
+library(broom)
+library(emmeans)
+library(mclogit)
+library(tidyverse)
+```
+
+# Books
+## Preprocess data
+```{r}
+
+# Load necessary libraries
+library(dplyr)
+
+# Read the data
+book_data <- read.csv("parsed_books.csv", stringsAsFactors = FALSE)
+speech_data <- read.csv("parsed_speech.csv", stringsAsFactors = FALSE)
+
+# Define the valid tag entity categories (including "Other")
+valid_tag_entities <- c("Biological Kind", "Artifacts", "Social Kind/Role", "Non-Living Kind", "Other")
+
+# Define pronoun list (you should replace this with your actual list)
+pronouns <- c("i", "we",
+              "you",
+              "he", "she", "it",
+              "they",
+              "me", "us",
+              "him", "her", 
+              "them",
+              "myself", "ourselves",
+              "yourself", "yourselves",
+              "himself", "herself", "itself",
+              "themselves")
+
+# Function to process each dataset
+process_data <- function(df, source_name) {
+  # Filter rows where category == 4
+  #df_filtered <- df %>% filter(quantified_classification=="Universal Quantifier")
+  df_filtered <- df
+  
+  # Convert tag_word and subject to lowercase for matching
+  df_filtered <- df_filtered %>%
+    mutate(tag_word_lower = tolower(tag_word),
+           subject_lower = tolower(subject),
+           is_pronoun = subject_lower %in% pronouns)  # Check if subject is a pronoun
+  
+  # Find matches where tag_word == subject and subject is not a pronoun
+  matched_rows <- df_filtered %>% filter(tag_word_lower == subject_lower)
+
+  # Assign "Other" if tag_entity is not in the valid set
+  matched_rows <- matched_rows %>%
+    mutate(tag_entity_new = ifelse(tag_entity %in% valid_tag_entities, tag_entity, "Other"))
+
+  # Create new columns for response
+  matched_rows <- matched_rows %>%
+    mutate(response = 1, source = source_name)
+
+  # Generate four additional rows per match with response = 0 (now including "Other")
+  additional_rows <- do.call(rbind, lapply(1:nrow(matched_rows), function(i) {
+    row <- matched_rows[i, ]
+    remaining_entities <- setdiff(valid_tag_entities, row$tag_entity_new)  # Include "Other"
+    additional <- data.frame(matrix(ncol = ncol(row), nrow = 4))  # 4 rows instead of 3
+    colnames(additional) <- colnames(row)
+    
+    for (j in 1:4) {
+      additional[j, ] <- row
+      additional$response[j] <- 0
+      additional$tag_entity_new[j] <- remaining_entities[j]
+    }
+    return(additional)
+  }))
+
+  # Combine matched rows with additional rows
+  df_processed <- rbind(matched_rows, additional_rows)
+
+  # Select only required columns
+  df_processed <- df_processed %>% select(tag_entity_new, response, sentence, source, is_pronoun)
+
+  return(df_processed)
+}
+
+# Process both datasets
+processed_books <- process_data(book_data, "book")
+processed_speech <- process_data(speech_data, "speech")
+
+# Merge the two datasets
+merged_data <- rbind(processed_books, processed_speech)
+
+# Rename columns for clarity
+colnames(merged_data) <- c("entity_type_new", "response", "sentence", "source", "is_pronoun")
+
+# Display first few rows to verify
+head(merged_data)
+
+
+
+```
+
+
+
+```{r}
+# logistic regression for including pronouns, generics
+
+# Convert categorical variables to factors
+merged_data$source <- as.factor(merged_data$source)
+merged_data$response <- as.factor(merged_data$response)  # Required for logistic regression
+
+# Set "Artifacts" as the reference level in entity_type_new
+merged_data$entity_type_new <- factor(merged_data$entity_type_new, 
+                                      levels = c("Artifacts", "Biological Kind", "Social Kind/Role", "Non-Living Kind"))
+# Fit the logistic regression model with an interaction term
+logistic_model <- glm(response ~ source * entity_type_new, data = merged_data, family = binomial)
+
+# Display model summary
+summary(logistic_model)
+
+# Obtain estimated marginal means (EMMs) for each entity type within each source
+emm <- emmeans(logistic_model, ~ entity_type_new | source, type = "response")
+
+# Get pairwise contrasts comparing everything against "Artifacts" separately for books and speech
+contrast_results <- contrast(emm, method = "trt.vs.ctrl", ref = 1, by = "source")
+
+# Print the contrast results
+print(contrast_results)
+
+
+
+```
+
+
+```{r}
+emm <- emmeans(logistic_model, ~ source + entity_type_new | source, type = "response")
+contrast_book <- contrast(emm, method = "pairwise", by="source")  # Separate for each source
+print(contrast_book)
+
+```
+
+```{r}
+# calculate the proportion (no pronouns)
+
+# Load necessary libraries
+library(dplyr)
+
+# Read the data
+book_data <- read.csv("parsed_books.csv", stringsAsFactors = FALSE)
+speech_data <- read.csv("parsed_speech.csv", stringsAsFactors = FALSE)
+
+# Define the valid tag entity categories (including "Other")
+valid_tag_entities <- c("Biological Kind", "Artifacts", "Social Kind/Role", "Non-Living Kind", "Other")
+
+# Define pronoun list (you should replace this with your actual list)
+pronouns <- c("i", "we",
+              "you",
+              "he", "she", "it",
+              "they",
+              "me", "us",
+              "him", "her", 
+              "them",
+              "myself", "ourselves",
+              "yourself", "yourselves",
+              "himself", "herself", "itself",
+              "themselves")
+
+# Function to process each dataset
+process_data <- function(df, source_name) {
+  # Filter rows where category == 4
+  df_filtered <- df %>% filter(category==3)
+
+  
+  # Convert tag_word and subject to lowercase for matching
+  df_filtered <- df_filtered %>%
+    mutate(tag_word_lower = tolower(tag_word),
+           subject_lower = tolower(subject),
+           is_pronoun = subject_lower %in% pronouns)  # Check if subject is a pronoun
+  
+  # Find matches where tag_word == subject and subject is not a pronoun
+  matched_rows <- df_filtered %>% filter(tag_word_lower == subject_lower & is_pronoun==FALSE)
+
+  # Assign "Other" if tag_entity is not in the valid set
+  matched_rows <- matched_rows %>%
+    mutate(tag_entity_new = ifelse(tag_entity %in% valid_tag_entities, tag_entity, "Other"))
+
+  # Create new columns for response
+  matched_rows <- matched_rows %>%
+    mutate(response = 1, source = source_name)
+
+  # Generate four additional rows per match with response = 0 (now including "Other")
+  additional_rows <- do.call(rbind, lapply(1:nrow(matched_rows), function(i) {
+    row <- matched_rows[i, ]
+    remaining_entities <- setdiff(valid_tag_entities, row$tag_entity_new)  # Include "Other"
+    additional <- data.frame(matrix(ncol = ncol(row), nrow = 4))  # 4 rows instead of 3
+    colnames(additional) <- colnames(row)
+    
+    for (j in 1:4) {
+      additional[j, ] <- row
+      additional$response[j] <- 0
+      additional$tag_entity_new[j] <- remaining_entities[j]
+    }
+    return(additional)
+  }))
+
+  # Combine matched rows with additional rows
+  df_processed <- rbind(matched_rows, additional_rows)
+
+  # Select only required columns
+  df_processed <- df_processed %>% select(tag_entity_new, response, sentence, source, is_pronoun)
+
+  return(df_processed)
+}
+
+# Process both datasets
+processed_books <- process_data(book_data, "book")
+processed_speech <- process_data(speech_data, "speech")
+
+
+```
+
+```{r}
+# calculate the proportion
+
+# Load necessary libraries
+library(dplyr)
+
+# Read the data
+book_data <- read.csv("parsed_books.csv", stringsAsFactors = FALSE)
+speech_data <- read.csv("parsed_speech.csv", stringsAsFactors = FALSE)
+
+# Define the valid tag entity categories (including "Other")
+valid_tag_entities <- c("Biological Kind", "Artifacts", "Social Kind/Role", "Non-Living Kind", "Other")
+
+# Define pronoun list (you should replace this with your actual list)
+pronouns <- c("i", "we",
+              "you",
+              "he", "she", "it",
+              "they",
+              "me", "us",
+              "him", "her", 
+              "them",
+              "myself", "ourselves",
+              "yourself", "yourselves",
+              "himself", "herself", "itself",
+              "themselves")
+
+# Function to process each dataset
+process_data <- function(df, source_name) {
+  # Filter rows where category == 4
+  df_filtered <- df %>% filter(category==3)
+
+  
+  # Convert tag_word and subject to lowercase for matching
+  df_filtered <- df_filtered %>%
+    mutate(tag_word_lower = tolower(tag_word),
+           subject_lower = tolower(subject),
+           is_pronoun = subject_lower %in% pronouns)  # Check if subject is a pronoun
+  
+  # Find matches where tag_word == subject and subject is not a pronoun
+  matched_rows <- df_filtered %>% filter(tag_word_lower == subject_lower)
+
+  # Assign "Other" if tag_entity is not in the valid set
+  matched_rows <- matched_rows %>%
+    mutate(tag_entity_new = ifelse(tag_entity %in% valid_tag_entities, tag_entity, "Other"))
+
+  # Create new columns for response
+  matched_rows <- matched_rows %>%
+    mutate(response = 1, source = source_name)
+
+  # Generate four additional rows per match with response = 0 (now including "Other")
+  additional_rows <- do.call(rbind, lapply(1:nrow(matched_rows), function(i) {
+    row <- matched_rows[i, ]
+    remaining_entities <- setdiff(valid_tag_entities, row$tag_entity_new)  # Include "Other"
+    additional <- data.frame(matrix(ncol = ncol(row), nrow = 4))  # 4 rows instead of 3
+    colnames(additional) <- colnames(row)
+    
+    for (j in 1:4) {
+      additional[j, ] <- row
+      additional$response[j] <- 0
+      additional$tag_entity_new[j] <- remaining_entities[j]
+    }
+    return(additional)
+  }))
+
+  # Combine matched rows with additional rows
+  df_processed <- rbind(matched_rows, additional_rows)
+
+  # Select only required columns
+  df_processed <- df_processed %>% select(tag_entity_new, response, sentence, source, is_pronoun)
+
+  return(df_processed)
+}
+
+# Process both datasets
+processed_books_pronouns <- process_data(book_data, "book")
+processed_speech_pronouns <- process_data(speech_data, "speech")
+```
+
+
+```{r}
+# Compute the mean of response for each tag_entity_new
+response_means <- processed_books %>%
+  group_by(tag_entity_new) %>%
+  summarize(mean_response = mean(response, na.rm = TRUE))
+
+# Display the result
+print(response_means)
+
+```
+
+```{r}
+# make big plot
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+# Function to compute confidence intervals
+compute_ci <- function(df) {
+  df %>%
+    filter(tag_entity_new != "Other") %>%  # Filter out "Other" category
+    group_by(tag_entity_new, source) %>%
+    summarise(
+      mean_response = mean(response, na.rm = TRUE),
+      n = n(),
+      se = sd(response, na.rm = TRUE) / sqrt(n),
+      ci = qt(0.975, df = n-1) * se
+    ) %>%
+    ungroup()
+}
+
+# Compute proportions and confidence intervals for all datasets
+book_ci <- compute_ci(processed_books)
+speech_ci <- compute_ci(processed_speech)
+book_pronoun_ci <- compute_ci(processed_books_pronouns)
+speech_pronoun_ci <- compute_ci(processed_speech_pronouns)
+
+# Manually add Gelman and Mehrotra values
+gelman_mehrotra <- data.frame(
+  tag_entity_new = c("Biological Kind", "Artifacts",
+                     "Biological Kind", "Artifacts"),
+  source = c("Gelman", "Gelman", "Mehrotra", "Mehrotra"),
+  mean_response = c(0.43, 0.26, 0.33, 0.47),
+  n = NA,
+  se = NA,
+  ci = NA
+)
+
+# Combine all datasets
+plot_data <- bind_rows(
+  book_ci %>% mutate(source = "book"),
+  speech_ci %>% mutate(source = "speech"),
+  book_pronoun_ci %>% mutate(source = "book_pronouns"),
+  speech_pronoun_ci %>% mutate(source = "speech_pronouns"),
+  gelman_mehrotra
+) %>%
+  mutate(
+    section = case_when(
+      source == "Gelman" ~ "Gelman",
+      source == "Mehrotra" ~ "Mehrotra",
+      source == "speech" ~ "Speech (no pronouns)",
+      source == "book" ~ "Books (no pronouns)",
+      source == "speech_pronouns" ~ "Speech (pronouns)",
+      source == "book_pronouns" ~ "Books (pronouns)",
+      TRUE ~ source
+    ),
+    section = factor(section, 
+                    levels = c("Gelman", "Mehrotra",
+                             "Speech (no pronouns)", "Books (no pronouns)",
+                             "Speech (pronouns)", "Books (pronouns)"))
+  )
+
+# Define consistent entity order for dodging (without "Other")
+entity_order <- c("Biological Kind", "Artifacts", "Non-Living Kind", "Social Kind/Role")
+plot_data$tag_entity_new <- factor(plot_data$tag_entity_new, levels = entity_order)
+
+# Create the plot
+ggplot(plot_data, aes(x = section, y = mean_response, fill = tag_entity_new)) +
+  geom_bar(stat = "identity", 
+          position = position_dodge(width = 0.8), 
+          width = 0.7) +
+  geom_errorbar(
+    aes(ymin = mean_response - ci, 
+        ymax = mean_response + ci), 
+    position = position_dodge(width = 0.8),
+    width = 0.2,
+    na.rm = TRUE
+  ) +
+  scale_y_continuous(limits = c(0, 1),
+                    labels = scales::percent_format(accuracy = 1)) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    x = "Dataset",
+    y = "Proportion",
+    fill = "Entity Type",
+    title = "Proportion of Different Entity Types Across Datasets",
+  ) +
+  theme_minimal() +
+theme(
+    axis.text.x = element_text(angle = 0, hjust = 1, size = 7),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(hjust = 0.5, size = 10),
+    legend.position = "bottom",
+    legend.title = element_text(size = 8),  # Smaller legend title
+    legend.text = element_text(size = 7),   # Smaller legend text
+    legend.key.size = unit(0.8, "lines"),   # Smaller legend keys
+    legend.spacing.x = unit(0.2, 'cm'),     # Less spacing between legend items
+    legend.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt")  # Reduce margin around legend
+)
+
+
+```
+
+
+
+
+
+
+```{r}
+# age analysis: generics, no pronouns, book
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+parsed_books <- read_csv("parsed_books.csv") |> 
+  mutate(
+    sentence_type = case_when(
+      category == 3 ~ "generic",
+      category == 4 ~ "habitual",
+      quantified_classification == "Universal Quantifier" ~ "universal_quantification",
+      .default = "other"
+    ) |> factor(levels = c("other", "generic", "habitual", "universal_quantification")),
+    
+    is_pronoun = tolower(subject) %in% pronouns
+  )
+
+books_matched <- parsed_books |> 
+  filter(tolower(tag_word) == tolower(subject), is_pronoun == FALSE) |>  # Filter out pronouns
+  mutate(
+    subject_kind = case_when(
+      tag_entity == "Artifacts" ~ "artifacts",
+      tag_entity == "Biological Kind" ~ "biological",
+      tag_entity == "Non-Living Kind" ~ "nonliving",
+      tag_entity == "Social Kind/Role" ~ "social",
+      .default = "other"
+    ) |> factor(levels = c("artifacts", "biological", "nonliving", "social", "other")) |> 
+      `contrasts<-`(value = contr.sum(5)),
+
+    # Add new binary columns
+    generic = ifelse(sentence_type == "generic", 1, 0),
+    habitual = ifelse(sentence_type == "habitual", 1, 0),
+    universal_quantification = ifelse(sentence_type == "universal_quantification", 1, 0)
+  ) |> 
+  # Expand rows for each age between age_min and age_max
+  rowwise() |> 
+  mutate(age = list(seq(age_min, age_max, by = 1))) |>  # Create a sequence of ages
+  unnest(age) |>  # Expand rows based on the age list
+  ungroup()
+
+
+
+
+```
+```{r}
+# fit logistic regression
+
+# Fit the logistic regression model
+generic_model <- glm(generic ~ age_min, data = books_matched, family = binomial)
+
+# Display the model summary
+summary(generic_model)
+
+
+
+
+```
+
+
+
+
+```{r}
+# age analysis: generics, no pronouns, books
+
+parsed_speech <- read_csv("parsed_speech.csv") |> 
+  mutate(
+    sentence_type = case_when(
+      category == 3 ~ "generic",
+      category == 4 ~ "habitual",
+      quantified_classification == "Universal Quantifier" ~ "universal_quantification",
+      .default = "other"
+    ) |> factor(levels = c("other", "generic", "habitual", "universal_quantification")),
+    is_pronoun = tolower(subject) %in% pronouns)
+
+speech_matched <- parsed_speech |> 
+  filter(tolower(tag_word) == tolower(subject), , is_pronoun == FALSE) |> 
+  mutate(
+    subject_kind = case_when(
+      tag_entity == "Artifacts" ~ "artifacts",
+      tag_entity == "Biological Kind" ~ "biological",
+      tag_entity == "Non-Living Kind" ~ "nonliving",
+      tag_entity == "Social Kind/Role" ~ "social",
+      .default = "other"
+    ) |> factor(levels = c("artifacts", "biological", "nonliving", "social", "other")) |> 
+      `contrasts<-`(value = contr.sum(5)),
+     # Add new binary columns
+    generic = ifelse(sentence_type == "generic", 1, 0),
+    habitual = ifelse(sentence_type == "habitual", 1, 0),
+    universal_quantification = ifelse(sentence_type == "universal_quantification", 1, 0),
+    age = rowMeans(cbind(age_min, age_max), na.rm = TRUE))
+
+
+```
+
+
+
+```{r}
+speech_matched %>%
+  filter(age == 6 & sentence_type=='generic') %>%
+  count()
+
+
+
+```
+
+
+
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(patchwork)  # for arranging plots side by side
+library(scales)     # for percent formatting
+
+# -----------------------------
+# For the Books Data Frame
+# -----------------------------
+books_prop <- books_matched %>%
+  group_by(age) %>%
+  summarize(
+    total      = n(),
+    generics   = sum(sentence_type == "generic"),
+    proportion = generics / total,
+    se         = sqrt(proportion * (1 - proportion) / total),
+    lower      = pmax(proportion - 1.96 * se, 0),
+    upper      = pmin(proportion + 1.96 * se, 1),
+    .groups    = "drop"
+  )
+
+books_plot <- ggplot(books_prop, aes(x = age, y = proportion)) +
+  geom_line(color = "black", size = 1) +
+  # Replace geom_errorbar() with geom_linerange() for vertical error bars without horizontal caps.
+  geom_linerange(aes(ymin = lower, ymax = upper), color = "black") +
+  geom_point(shape = 21, size = 4, color = "black", fill = "lightgray") +
+  scale_x_continuous(breaks = 1:12, limits = c(1, 12)) +
+  # Display y-axis values as percentages.
+  scale_y_continuous(labels = percent) +
+  labs(x = "Age", y = "Proportion of Generics", title = "Books") +
+  theme_minimal(base_size = 16) +
+  theme(
+    # Remove vertical grid lines.
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    # Add black axis lines.
+    axis.line = element_line(color = "black")
+  )
+
+# -----------------------------
+# For the Speech Data Frame
+# -----------------------------
+speech_prop <- speech_matched %>%
+  group_by(age) %>%
+  summarize(
+    total      = n(),
+    generics   = sum(sentence_type == "generic"),
+    proportion = generics / total,
+    se         = sqrt(proportion * (1 - proportion) / total),
+    lower      = pmax(proportion - 1.96 * se, 0),
+    upper      = pmin(proportion + 1.96 * se, 1),
+    .groups    = "drop"
+  )
+
+speech_plot <- ggplot(speech_prop, aes(x = age, y = proportion)) +
+  geom_line(color = "black", size = 1) +
+  geom_linerange(aes(ymin = lower, ymax = upper), color = "black") +
+  geom_point(shape = 21, size = 4, color = "black", fill = "lightgray") +
+  scale_x_continuous(breaks = 1:12, limits = c(1, 12)) +
+  scale_y_continuous(labels = percent) +
+  labs(x = "Age", y = "Proportion of Generics", title = "Speech") +
+  theme_minimal(base_size = 16) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    axis.line = element_line(color = "black")
+  )
+
+# -----------------------------
+# Combine the two plots side by side
+# -----------------------------
+combined_plot <- books_plot + speech_plot
+
+# Display the combined plot
+print(combined_plot)
+
+# Save the combined plot as a PDF.
+ggsave("combined_plot.pdf", plot = combined_plot, width = 12, height = 6)
+
+
+
+```
+

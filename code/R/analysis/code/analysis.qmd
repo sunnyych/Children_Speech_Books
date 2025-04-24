@@ -1,0 +1,594 @@
+---
+title: "Generalizations in children's books and child-directed speech"
+format: html
+---
+
+# Setup
+```{r}
+library(here)
+library(nnet)
+library(broom)
+library(emmeans)
+library(mclogit)
+library(tidyverse)
+```
+
+```{r}
+DATA_LOC <- here("data")
+OUTPUT_LOC <- here("outputs")
+
+pronouns <- c("i", "we",
+              "you",
+              "he", "she", "it",
+              "they",
+              "me", "us",
+              "him", "her", 
+              "them",
+              "myself", "ourselves",
+              "yourself", "yourselves",
+              "himself", "herself", "itself",
+              "themselves")
+
+property_types <- c("behavioral", "biological", "social", 
+                    "teleological", "perceptual")
+```
+
+# Books
+## Preprocess data
+```{r}
+parsed_books <- read_csv("parsed_books.csv") |> 
+  mutate(
+    sentence_type = case_when(
+      category == 3 ~ "generic",
+      category == 4 ~ "habitual",
+      quantified_classification == "Universal Quantifier" ~ "universal_quantification",
+      .default = "other"
+    ) |> factor(levels = c("other", "generic", "habitual", "universal_quantification")),
+    is_pronoun = tolower(subject) %in% pronouns)
+books_matched <- parsed_books |> 
+  filter(tolower(tag_word) == tolower(subject)) |> 
+  mutate(
+    subject_kind = case_when(
+      tag_entity == "Artifacts" ~ "artifacts",
+      tag_entity == "Biological Kind" ~ "biological",
+      tag_entity == "Non-Living Kind" ~ "nonliving",
+      tag_entity == "Social Kind/Role" ~ "social",
+      .default = "other"
+    ) |> factor(levels = c("artifacts", "biological", "nonliving", "social", "other")) |> 
+      `contrasts<-`(value = contr.sum(5)),
+    age_mean = rowMeans(cbind(age_min, age_max), na.rm = TRUE))
+```
+
+```{r}
+parsed_books <- read_csv("parsed_books.csv") |> 
+  mutate(
+    sentence_type = case_when(
+      category == 3 ~ "generic",
+      category == 4 ~ "habitual",
+      quantified_classification == "Universal Quantifier" ~ "universal_quantification",
+      .default = "other"
+    ) |> factor(levels = c("other", "generic", "habitual", "universal_quantification")),
+    is_pronoun = tolower(subject) %in% pronouns)
+books_matched_noprons <- parsed_books |> 
+  filter(tolower(tag_word) == tolower(subject) & is_pronoun == FALSE) |> 
+  mutate(
+    subject_kind = case_when(
+      tag_entity == "Artifacts" ~ "artifacts",
+      tag_entity == "Biological Kind" ~ "biological",
+      tag_entity == "Non-Living Kind" ~ "nonliving",
+      tag_entity == "Social Kind/Role" ~ "social",
+      .default = "other"
+    ) |> factor(levels = c("artifacts", "biological", "nonliving", "social", "other")) |> 
+      `contrasts<-`(value = contr.sum(5)),
+    age_mean = rowMeans(cbind(age_min, age_max), na.rm = TRUE))
+```
+
+
+
+
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(scales)  # for percent formatting
+
+# -------------------------
+# Step 1. Label the data frames
+# -------------------------
+books_matched$dataset           <- "books (including pronouns)"
+speech_matched$dataset          <- "speech (including pronouns)"
+books_matched_noprons$dataset   <- "books (excluding pronouns)"
+speech_matched_noprons$dataset  <- "speech (excluding pronouns)"
+
+# -------------------------
+# Step 2. Combine the data frames
+# -------------------------
+all_df <- bind_rows(books_matched, speech_matched,
+                    books_matched_noprons, speech_matched_noprons)
+
+# -------------------------
+# Step 2.5. Filter to desired subject kinds
+# -------------------------
+all_df <- all_df %>% 
+  filter(subject_kind %in% c("artifacts", "biological", "nonliving", "social"))
+
+# -------------------------
+# Step 3. Prepare the bar plot data (plot_df)
+# -------------------------
+# (These proportions are computed per subject kind within each dataset)
+totals <- all_df %>%
+  group_by(dataset, subject_kind) %>%
+  summarize(total = n(), .groups = "drop")
+
+plot_df <- all_df %>%
+  filter(sentence_type %in% c("generic", "habitual", "universal_quantification")) %>%
+  group_by(dataset, subject_kind, sentence_type) %>%
+  summarize(count = n(), .groups = "drop") %>%
+  left_join(totals, by = c("dataset", "subject_kind")) %>%
+  mutate(proportion = count / total,
+         se         = sqrt(proportion * (1 - proportion) / total),
+         lower      = pmax(proportion - 1.96 * se, 0),
+         upper      = pmin(proportion + 1.96 * se, 1)) %>%
+  # Change "universal_quantification" label to include a line break.
+  mutate(sentence_type = recode(sentence_type,
+                                universal_quantification = "universally\nquantified"))
+
+# Set sentence_type as a factor with fixed levels (this ensures consistency in positioning)
+plot_df$sentence_type <- factor(plot_df$sentence_type, 
+                                levels = c("generic", "habitual", "universally\nquantified"))
+
+# -------------------------
+# Step 4. Compute the base rate for each sentence type in each dataset.
+# -------------------------
+# Here, for each dataset and sentence type (across all sentences), the base rate is computed.
+base_rate_df <- all_df %>%
+  filter(sentence_type %in% c("generic", "habitual", "universal_quantification")) %>%
+  group_by(dataset, sentence_type) %>%
+  summarize(count = n(), .groups = "drop") %>%
+  left_join(
+    all_df %>% group_by(dataset) %>% summarize(total = n(), .groups = "drop"),
+    by = "dataset"
+  ) %>%
+  mutate(base_rate = count / total) %>%
+  mutate(sentence_type = recode(sentence_type,
+                                universal_quantification = "universally\nquantified"))
+
+# Ensure the sentence_type factor levels match those in plot_df.
+base_rate_df$sentence_type <- factor(base_rate_df$sentence_type, 
+                                     levels = c("generic", "habitual", "universally\nquantified"))
+
+# -------------------------
+# Step 5. Create the plot
+# -------------------------
+p <- ggplot(plot_df, aes(x = sentence_type, y = proportion, fill = subject_kind)) +
+  # Bar plot with black outlines
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
+  # Vertical error lineranges
+  geom_linerange(aes(ymin = lower, ymax = upper),
+                 position = position_dodge(width = 0.9)) +
+  # Add the base rate dotted lines.
+  # We convert the discrete sentence_type to numeric positions.
+  geom_segment(data = base_rate_df,
+               aes(x = as.numeric(sentence_type) - 0.45,
+                   xend = as.numeric(sentence_type) + 0.45,
+                   y = base_rate,
+                   yend = base_rate,
+                   linetype = "Base rate"),
+               inherit.aes = FALSE,
+               color = "black",
+               size = 0.8) +
+  facet_wrap(~ dataset, nrow = 1) +
+  labs(x = "", y = "Proportion", fill = "Subject Kind") +  # Remove x-axis label
+  # Change the y-axis to percentages.
+  scale_y_continuous(labels = percent) +
+  theme_minimal(base_size = 16) +
+  theme(
+    # White backgrounds for panels, plot, and facet labels.
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background  = element_rect(fill = "white", color = NA),
+    strip.background = element_rect(fill = "white", color = NA),
+    # Remove vertical grid lines.
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    # Increase font sizes for axis text.
+    axis.title = element_text(size = 18),
+    axis.text.x = element_text(size = 16),
+    axis.text.y = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.text  = element_text(size = 14),
+    panel.spacing = unit(1, "cm"),
+    # Move legend to bottom and display it horizontally.
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    # Reduce the space between the plot and the legend.
+    legend.box.margin = margin(0, 0, 0, 0)
+  ) +
+  # Manually set the linetype for the "Base rate" so it appears as a dotted line in the legend.
+  scale_linetype_manual(name = "", values = c("Base rate" = "dotted"),
+                        guide = guide_legend(override.aes = list(color = "black")))
+
+# -------------------------
+# Step 6. Save the plot as a PDF.
+# -------------------------
+ggsave("my_plot.pdf", plot = p, width = 16, height = 4)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# Load necessary library
+# Load necessary library
+library(dplyr)
+library(tidyr)
+
+# Count occurrences of each sentence_type within each subject_kind
+counts_df <- books_matched %>%
+  filter(is_pronoun==FALSE) %>%
+  group_by(subject_kind, sentence_type) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# Create a wide contingency table with counts for all sentence types
+contingency_table <- counts_df %>%
+  spread(sentence_type, count, fill = 0) %>%
+  filter(subject_kind %in% c("artifacts", "social"))
+
+# Compute proportions of each sentence type within each subject_kind
+contingency_table <- contingency_table %>%
+  mutate(total = generic + other + habitual + universal_quantification,
+         proportion_generic = universal_quantification / total)
+
+# Print proportions for each sentence type
+print(contingency_table)
+
+# Extract only generic vs. non-generic for chi-square test
+chi_square_matrix <- contingency_table %>%
+  transmute(subject_kind, universal_quantification, non_generic = total - universal_quantification) %>%
+  select(-subject_kind) %>%
+  as.matrix()
+
+# Perform chi-square test
+chi_sq_test <- chisq.test(chi_square_matrix)
+
+# Print test results
+print(chi_sq_test)
+
+# Determine which subject kind has a higher proportion of "generic" sentences
+higher_category <- contingency_table %>%
+  arrange(desc(proportion_generic)) %>%
+  select(subject_kind, proportion_generic)
+
+print(higher_category)
+
+
+
+```
+
+
+```{r}
+tibble(category = rep(c("artifact", "biological"), 2),
+                  statement = rep(c("generic", "other"), each = 2),
+                  value = c(43, 137, 1500, 8986)) %>% 
+  pivot_wider(names_from = category) %>% 
+  column_to_rownames(var = "statement") %>% 
+  as.matrix() %>% 
+  chisq.test()
+```
+
+
+
+
+
+```{r}
+# Compute the mean of response for each tag_entity_new
+subject_kind_proportion <- speech_matched %>%
+  filter(sentence_type == "universal_quantification") %>%  # Filter for generic sentences
+  group_by(subject_kind) %>%  # Group by subject_kind
+  summarize(count = n()) %>%  # Count occurrences of each subject_kind
+  mutate(proportion = count / sum(count))  # Compute proportion
+
+# Display the result
+print(subject_kind_proportion)
+
+```
+
+
+
+```{r}
+) |> factor(levels = c("artifacts", "biological", "nonliving", "social", "other")) |> 
+      `contrasts<-`(value = contr.sum(5)),
+    age_mean = rowMeans(cbind(age_min, age_max), na.rm = TRUE))
+```
+
+## Subject kinds model
+```{r}
+books_mod_full <- mblogit(sentence_type ~ subject_kind,
+                          # random = ~ 1 | story_id,
+                          data = books_matched)
+books_emm_full <- emmeans(books_mod_full, ~ subject_kind | sentence_type)
+books_con_full <- contrast(books_emm_full, "pairwise")
+books_emm_full_out <- books_emm_full |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "books_emm_full.csv"))
+books_con_full_out <- books_con_full |> tidy() |> 
+  write_csv(here(OUTPUT_LOC, "books_con_full.csv"))
+
+books_mod_nopron <- mblogit(sentence_type ~ subject_kind,
+                            # random = ~ 1 | story_id,
+                            data = books_matched |> filter(!is_pronoun))
+books_emm_nopron <- emmeans(books_mod_nopron, ~ subject_kind | sentence_type)
+books_con_nopron <- contrast(books_emm_nopron, "pairwise")
+books_emm_nopron_out <- books_emm_nopron |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "books_emm_nopron.csv"))
+books_con_nopron_out <- books_con_nopron |> tidy() |> 
+  write_csv(here(OUTPUT_LOC, "books_emm_nopron.csv"))
+```
+
+## Age model
+```{r}
+books_mod_age <- mblogit(sentence_type ~ subject_kind * age_mean,
+                         data = books_matched |> filter(!is_pronoun))
+books_emm_age <- emmeans(books_mod_age, ~ age_mean * subject_kind | sentence_type,
+                         at = list(age_mean = c(1:12)))
+books_emt_age <- emtrends(books_mod_age, ~ subject_kind | sentence_type, 
+                          var = "age_mean")
+
+books_emm_age_out <- books_emm_age |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "books_emm_age.csv"))
+books_emt_age_out <- books_emt_age |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "books_emt_age.csv"))
+```
+
+## Property types processing
+```{r}
+books_properties <- map(
+  c(
+    here(DATA_LOC, "books_generics.csv"),
+    here(DATA_LOC, "books_habituals.csv"),
+    here(DATA_LOC, "books_quantifiers.csv")
+  ), 
+  \(f) read_csv(
+    f, col_types = cols_only(
+      sentence = "c",
+      classification = "c",
+      age_min = "d",
+      age_max = "d"))) |> 
+  list_rbind() |> 
+  distinct() |> 
+  group_by(sentence, age_min, age_max) |> 
+  summarise(classification = paste0(classification, collapse = ","),
+            .groups = "drop")
+
+books_properties_merged <- books_matched |> 
+  left_join(books_properties, by = join_by(sentence, age_min, age_max)) |> 
+  filter(sentence_type != "other") |> 
+  mutate(classification = strsplit(classification, split = ",")) |> 
+  unnest(cols = classification) |> 
+  distinct() |> 
+  mutate(classification = case_when(
+    classification == 1 ~ "behavioral",
+    classification == 2 ~ "biological",
+    classification == 3 ~ "social",
+    classification == 4 ~ "teleological",
+    classification == 5 ~ "perceptual",
+    .default = "none"
+  )) |> 
+  mutate(value = 1) |> 
+  pivot_wider(names_from = classification) |> 
+  mutate(
+    none = case_when(
+      behavioral | biological | social | teleological | perceptual ~ NA,
+      none == 1 ~ 1,
+      .default = NA
+    ),
+    across(c(behavioral, biological, social, teleological, perceptual, none),
+           \(c) replace_na(c, 0)),
+    sentence_type = sentence_type |> fct_drop())
+```
+
+## Property types model
+```{r}
+books_mod_prop <- multinom(sentence_type ~ subject_kind * 
+                             (behavioral + biological + social + teleological + perceptual),
+                           data = books_properties_merged |> filter(!is_pronoun))
+books_emm_prop <- emmeans(books_mod_prop, ~ subject_kind *
+                            (behavioral + biological + social + teleological + perceptual) | sentence_type) |> 
+  subset(behavioral + biological + social + teleological + perceptual == 1)
+books_con_prop <- contrast(books_emm_prop,
+                           by = c("subject_kind", "sentence_type"),
+                           method = "pairwise")
+
+books_emm_prop_out <- books_emm_prop |> tidy(conf.int = TRUE) |> 
+  pivot_longer(cols = all_of(property_types), 
+               names_to = "property_type",
+               values_to = "value") |> 
+  filter(value == 1) |> 
+  select(-value) |> 
+  write_csv(here(OUTPUT_LOC, "books_emm_properties.csv"))
+books_con_prop_out <- books_con_prop |> tidy() |> 
+  mutate(term = "property_kind",
+         contrast = contrast |> 
+           str_remove_all("[a-z]+0") |> 
+           str_remove_all("1") |> 
+           str_squish()) |> 
+  write_csv(here(OUTPUT_LOC, "books_con_properties.csv"))
+```
+
+# Speech
+## Preprocess data
+```{r}
+parsed_speech <- read_csv("parsed_speech.csv") |> 
+  mutate(
+    sentence_type = case_when(
+      category == 3 ~ "generic",
+      category == 4 ~ "habitual",
+      quantified_classification == "Universal Quantifier" ~ "universal_quantification",
+      .default = "other"
+    ) |> factor(levels = c("other", "generic", "habitual", "universal_quantification")),
+    is_pronoun = tolower(subject) %in% pronouns)
+
+speech_matched <- parsed_speech |> 
+  filter(tolower(tag_word) == tolower(subject)) |> 
+  mutate(
+    subject_kind = case_when(
+      tag_entity == "Artifacts" ~ "artifacts",
+      tag_entity == "Biological Kind" ~ "biological",
+      tag_entity == "Non-Living Kind" ~ "nonliving",
+      tag_entity == "Social Kind/Role" ~ "social",
+      .default = "other"
+    ) |> factor(levels = c("artifacts", "biological", "nonliving", "social", "other")) |> 
+      `contrasts<-`(value = contr.sum(5)),
+    age_mean = rowMeans(cbind(age_min, age_max), na.rm = TRUE))
+```
+
+```{r}
+parsed_speech <- read_csv("parsed_speech.csv") |> 
+  mutate(
+    sentence_type = case_when(
+      category == 3 ~ "generic",
+      category == 4 ~ "habitual",
+      quantified_classification == "Universal Quantifier" ~ "universal_quantification",
+      .default = "other"
+    ) |> factor(levels = c("other", "generic", "habitual", "universal_quantification")),
+    is_pronoun = tolower(subject) %in% pronouns)
+
+speech_matched_noprons <- parsed_speech |> 
+  filter(tolower(tag_word) == tolower(subject) & is_pronoun == FALSE) |> 
+  mutate(
+    subject_kind = case_when(
+      tag_entity == "Artifacts" ~ "artifacts",
+      tag_entity == "Biological Kind" ~ "biological",
+      tag_entity == "Non-Living Kind" ~ "nonliving",
+      tag_entity == "Social Kind/Role" ~ "social",
+      .default = "other"
+    ) |> factor(levels = c("artifacts", "biological", "nonliving", "social", "other")) |> 
+      `contrasts<-`(value = contr.sum(5)),
+    age_mean = rowMeans(cbind(age_min, age_max), na.rm = TRUE))
+```
+
+
+
+
+## Subject kinds model
+```{r}
+speech_mod_full <- mblogit(sentence_type ~ subject_kind,
+                          # random = ~ 1 | story_id,
+                          data = speech_matched)
+speech_emm_full <- emmeans(speech_mod_full, ~ subject_kind | sentence_type)
+speech_con_full <- contrast(speech_emm_full, "pairwise")
+speech_emm_full_out <- speech_emm_full |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "speech_emm_full.csv"))
+speech_con_full_out <- speech_con_full |> tidy() |> 
+  write_csv(here(OUTPUT_LOC, "speech_con_full.csv"))
+
+speech_mod_nopron <- mblogit(sentence_type ~ subject_kind,
+                            # random = ~ 1 | story_id,
+                            data = speech_matched |> filter(!is_pronoun))
+speech_emm_nopron <- emmeans(speech_mod_nopron, ~ subject_kind | sentence_type)
+speech_con_nopron <- contrast(speech_emm_nopron, "pairwise")
+speech_emm_nopron_out <- speech_emm_nopron |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "speech_emm_nopron.csv"))
+speech_con_nopron_out <- speech_con_nopron |> tidy() |> 
+  write_csv(here(OUTPUT_LOC, "speech_emm_nopron.csv"))
+```
+
+## Age model
+```{r}
+speech_mod_age <- mblogit(sentence_type ~ subject_kind * age_mean,
+                         data = speech_matched |> 
+                           filter(!is_pronoun, !is.nan(age_mean)))
+speech_emm_age <- emmeans(speech_mod_age, ~ age_mean * subject_kind | sentence_type,
+                         at = list(age_mean = c(1:12)))
+speech_emt_age <- emtrends(speech_mod_age, ~ subject_kind | sentence_type, 
+                          var = "age_mean")
+
+speech_emm_age_out <- speech_emm_age |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "speech_emm_age.csv"))
+speech_emt_age_out <- speech_emt_age |> tidy(conf.int = TRUE) |> 
+  write_csv(here(OUTPUT_LOC, "speech_emt_age.csv"))
+```
+
+## Property types processing
+```{r}
+speech_properties <- map(
+  c(
+    here(DATA_LOC, "speech_generics.csv"),
+    here(DATA_LOC, "speech_habituals.csv"),
+    here(DATA_LOC, "speech_quantifiers.csv")
+  ), 
+  \(f) read_csv(
+    f, col_types = cols_only(
+      sentence = "c",
+      classification = "c",
+      age_min = "d",
+      age_max = "d"))) |> 
+  list_rbind() |> 
+  distinct() |> 
+  group_by(sentence, age_min, age_max) |> 
+  summarise(classification = paste0(classification, collapse = ","),
+            .groups = "drop")
+
+speech_properties_merged <- speech_matched |> 
+  left_join(speech_properties, by = join_by(sentence, age_min, age_max)) |> 
+  filter(sentence_type != "other") |> 
+  mutate(classification = strsplit(classification, split = ",")) |> 
+  unnest(cols = classification) |> 
+  distinct() |> 
+  mutate(classification = case_when(
+    classification == 1 ~ "behavioral",
+    classification == 2 ~ "biological",
+    classification == 3 ~ "social",
+    classification == 4 ~ "teleological",
+    classification == 5 ~ "perceptual",
+    .default = "none"
+  )) |> 
+  mutate(value = 1) |> 
+  pivot_wider(names_from = classification) |> 
+  mutate(
+    none = case_when(
+      behavioral | biological | social | teleological | perceptual ~ NA,
+      none == 1 ~ 1,
+      .default = NA
+    ),
+    across(c(behavioral, biological, social, teleological, perceptual, none),
+           \(c) replace_na(c, 0)),
+    sentence_type = sentence_type |> fct_drop())
+```
+
+## Property types model
+```{r}
+speech_mod_prop <- multinom(sentence_type ~ subject_kind * 
+                             (behavioral + biological + social + teleological + perceptual),
+                           data = speech_properties_merged |> filter(!is_pronoun))
+speech_emm_prop <- emmeans(speech_mod_prop, ~ subject_kind *
+                            (behavioral + biological + social + teleological + perceptual) | sentence_type) |> 
+  subset(behavioral + biological + social + teleological + perceptual == 1)
+speech_con_prop <- contrast(speech_emm_prop,
+                           by = c("subject_kind", "sentence_type"),
+                           method = "pairwise")
+
+speech_emm_prop_out <- speech_emm_prop |> tidy(conf.int = TRUE) |> 
+  pivot_longer(cols = all_of(property_types), 
+               names_to = "property_type",
+               values_to = "value") |> 
+  filter(value == 1) |> 
+  select(-value) |> 
+  write_csv(here(OUTPUT_LOC, "speech_emm_properties.csv"))
+speech_con_prop_out <- speech_con_prop |> tidy() |> 
+  mutate(term = "property_kind",
+         contrast = contrast |> 
+           str_remove_all("[a-z]+0") |> 
+           str_remove_all("1") |> 
+           str_squish()) |> 
+  write_csv(here(OUTPUT_LOC, "speech_con_properties.csv"))
+```
