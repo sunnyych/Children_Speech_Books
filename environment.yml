@@ -1,0 +1,25 @@
+name: generics_revisited
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pandas
+  - numpy
+  - scipy
+  - matplotlib
+  - seaborn
+  - tqdm
+  - scikit-learn
+  - torch
+  - nltk
+  - transformers
+  - evaluate
+  - requests
+  - beautifulsoup4
+  - stanza
+  - ipykernel
+  - jupyter
+  - pip
+  - pip:
+      - openai
