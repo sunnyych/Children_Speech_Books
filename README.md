@@ -5,6 +5,7 @@
 Presented at the 47th Annual Meeting of the Cognitive Science Society (2025; San Fransisco, CA).
 
 [Link to paper](https://github.com/sunnyych/Children_Speech_Books/Generics_revisited_CogSci_paper.pdf)
+[Preprint](https://osf.io/preprints/psyarxiv/eqm7u_v1?view_only=)
 
 ```
 @inproceedings{yu2025genericsrevisited,
